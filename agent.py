@@ -6,6 +6,7 @@ from langchain.schema import Document
 from langchain.prompts import ChatPromptTemplate
 from langchain_community.tools import TavilySearchResults
 from typing import TypedDict,Annotated,Sequence,Literal
+from langchain.schema import Document
 from langchain_core.messages import BaseMessage,AIMessage,ToolMessage
 from dotenv import load_dotenv
 from rag import RAG
@@ -29,7 +30,10 @@ def initalize_rag(urls,file_paths,docs):
     rag.initialize_retriever()
 
 class DocumentRelevancy(BaseModel):
-    relevant: str = Field(description="Wether document is relevant or not.") 
+    relevant: list[str] = Field(description="List of response suggestiong wether document is relevant or not.") 
+
+class DocumentRelevancy2(BaseModel):
+    relevant: list[str] = Field(description="List of response suggestiong wether documents are relevant or not. Example ['yes','no','yes'...]") 
 
 class GeneralMessage(BaseModel):
     isQuestion: str = Field(description="Wether user input is really a query or not") 
@@ -159,6 +163,45 @@ def quality_grader(state:AgentState):
     
     return {"documents": new_docs_list,"requires_web_search":False}
 
+def quality_grader2(state):
+    """Grade the quality of the retrieved documents."""
+    if len(state["documents"]) > 0:
+        documents = state["documents"]
+        query = state["query"]
+        
+        sys_msg = """
+        You are an assistant tasked with determining whether each document is at least **partially relevant** to the given query.
+
+        ### Query:
+        "{query}"
+
+        ### Instructions:
+        - Review each document **as if it were written in the context of the query**.
+        - If the document contains information, phrases, or implications that could support, explain, or relate to the query, even indirectly, respond with "yes".
+        - If the document contains completely unrelated information, respond with "no".
+        - Consider implied meaning — for example, a rise in profit may relate to growth in the stock market.
+
+        ### Output format:
+        Return a list of responses matching the documents’ order: ["yes", "no", "yes"]
+        """
+        chat_template = ChatPromptTemplate.from_messages([
+            ("system", sys_msg),
+            ("user", "DOCUMENTS: {documents}"),
+        ])
+
+        llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(DocumentRelevancy2)
+        prompt = chat_template.format_prompt(documents=str(documents),query=query)
+        result = llm.invoke(prompt)
+        new_docs_list = []
+        for idx,relevance in enumerate(result.relevant):
+            if relevance=="yes":
+                new_docs_list.append(documents[idx])
+        
+        if len(new_docs_list) == 0 or len(new_docs_list)/len(documents) < 0.20:
+            return {"documents": new_docs_list,"requires_web_search":True}
+    
+    return {"documents": new_docs_list,"requires_web_search":False}
+
 def router(state:AgentState):
     """Route the query to the appropriate function based on the state."""
     if state["requires_web_search"] == True:
@@ -198,3 +241,4 @@ def summarize(state:AgentState):
     prompt = chat_template.format_prompt(query=query, messages=messages, documents=documents+[web_search_results])
     response = llm.invoke(prompt)
     return {"answer": response.content,"messages":[AIMessage(content=response.content)]}
+

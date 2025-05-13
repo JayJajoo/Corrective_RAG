@@ -24,7 +24,6 @@ class RAG():
             self.documents.extend(TextLoader(path).load())
     def load_docs(self,docs:list[Document]):
             self.documents.extend(docs)
-            print(len(self.documents))
     def generate_summary(self):
         llm = ChatOpenAI(model="gpt-4.1-nano",temperature=0.7)
         for doc in self.documents:
@@ -41,11 +40,10 @@ class RAG():
     def vectorize_documents(self):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
         texts = text_splitter.split_documents(self.documents+self.docs_summaries)
-        self.vectorstore = Chroma.from_documents(texts, self.embeddings,persist_directory="D:/LLM projects/corrective_rag_db/")
+        self.vectorstore = Chroma.from_documents(texts, self.embeddings,persist_directory="D:/LLM projects/corrective_rag/corrective_rag_db")
     def initialize_retriever(self):
         self.retriever = self.vectorstore.as_retriever(search_type="mmr",search_kwargs={'k': 6})
     def get_relevant_documents(self,query:str):
         docs = self.retriever.get_relevant_documents(query)
         return docs
     
-# docs.append(Document(page_content=content, metadata={"source": uploaded_file.name}))
