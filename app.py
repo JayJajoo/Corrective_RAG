@@ -3,7 +3,7 @@ from langgraph.graph import StateGraph, END, START
 from langgraph.checkpoint.memory import MemorySaver
 from dotenv import load_dotenv
 from rag import RAG
-from agent import AgentState, rephrase_query, retriver, quality_grader, router, web_search, summarize, initalize_rag
+from agent import AgentState, rephrase_query, retriver, quality_grader, router, web_search, summarize, initalize_rag, capture_intent,initial_route
 from langchain_core.messages import HumanMessage, AIMessage
 import streamlit as st
 from langchain.schema import Document
@@ -13,12 +13,16 @@ import PyPDF2
 
 load_dotenv()
 
+def initialize_memory():
+    memory = MemorySaver()
+    return memory
+
 def initialize_agent(file_paths=None, docs=None, urls=None):
     initalize_rag(urls=urls, file_paths=file_paths, docs=docs)
-    
-    workflow = StateGraph(AgentState)
-    memory = MemorySaver()
 
+    workflow = StateGraph(AgentState)
+    workflow.add_node("capture_intent",capture_intent)
+    workflow.add_node("initial_route",initial_route)
     workflow.add_node("rephrase_query", rephrase_query)
     workflow.add_node("retriver", retriver)
     workflow.add_node("quality_grader", quality_grader)
@@ -26,15 +30,16 @@ def initialize_agent(file_paths=None, docs=None, urls=None):
     workflow.add_node("web_search", web_search)
     workflow.add_node("summarize", summarize)
 
-    workflow.add_edge(START, "rephrase_query")
+    workflow.add_edge(START,"capture_intent")
+    workflow.add_conditional_edges("capture_intent", initial_route, {"rephrase_query": "rephrase_query", "summarize": "summarize"})
     workflow.add_edge("rephrase_query", "retriver")
     workflow.add_edge("retriver", "quality_grader")
     workflow.add_conditional_edges("quality_grader", router, {"web_search": "web_search", "summarize": "summarize"})
     workflow.add_edge("web_search", "summarize")
     workflow.add_edge("summarize", END)
 
-    agent = workflow.compile(checkpointer=memory)
-    return agent, memory
+    agent = workflow.compile(checkpointer=st.session_state.memory)
+    return agent
 
 def main():
     if "disabled" not in st.session_state:
@@ -42,7 +47,7 @@ def main():
     if "config" not in st.session_state:
         st.session_state.config = {"configurable": {"thread_id": "1"}}
     if "memory" not in st.session_state:
-        st.session_state.memory = None
+        st.session_state.memory = initialize_memory()
     if "agent" not in st.session_state:
         st.session_state.agent = None
     if "messages" not in st.session_state:
@@ -78,7 +83,7 @@ def main():
                 urls = [url.strip() for url in links.split(",")]
                 st.session_state.disabled = False
             if not st.session_state.disabled:
-                st.session_state.agent, st.session_state.memory = initialize_agent(docs=docs, urls=urls, file_paths=file_paths)
+                st.session_state.agent = initialize_agent(docs=docs, urls=urls, file_paths=file_paths)
 
     chat_input = st.chat_input(
         placeholder="Please upload some documents to start.",

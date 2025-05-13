@@ -4,14 +4,16 @@ from langchain_community.vectorstores import Chroma
 from langchain_openai import ChatOpenAI
 from langchain.schema import Document
 from langchain.prompts import ChatPromptTemplate
-from langchain_community.tools import DuckDuckGoSearchResults,TavilySearchResults
+from langchain_community.tools import TavilySearchResults
 from typing import TypedDict,Annotated,Sequence,Literal
 from langchain_core.messages import BaseMessage,AIMessage,ToolMessage
 from dotenv import load_dotenv
 from rag import RAG
+
 load_dotenv()
 
 rag = None
+
 
 def initalize_rag(urls,file_paths,docs):
     global rag
@@ -22,21 +24,64 @@ def initalize_rag(urls,file_paths,docs):
         rag.load_docs(docs=docs)
     if file_paths:
         rag.load_texts(file_paths=file_paths)
+    rag.generate_summary()
     rag.vectorize_documents()
     rag.initialize_retriever()
 
 class DocumentRelevancy(BaseModel):
     relevant: str = Field(description="Wether document is relevant or not.") 
 
+class GeneralMessage(BaseModel):
+    isQuestion: str = Field(description="Wether user input is really a query or not") 
+
 class AgentState(TypedDict):
     """State of the agent."""
     query: str
-    rephrased_query:str
+    isQuestion:str
     web_search_results: list[Document]
     documents: list[Document]
     requires_web_search:bool
     messages: Annotated[Sequence[BaseMessage],operator.add]
     answer:str
+
+def capture_intent(state:AgentState):
+    
+    query = state["query"]
+
+    sys_msg = """You are an intelligent assistant. Your job is to analyze a user’s message and decide whether it is:
+    Just a greeting or casual message (like “hi”, “hello”, “thanks”, “how are you?”, “good morning”), which does not require further processing, or
+    A meaningful question or request that likely requires retrieval, summarization, or external web search.
+    Rules:
+    If the message is only a greeting, thank-you note, small talk, or unrelated pleasantry, respond with: no
+    If the message asks for information, makes a request, or has keywords suggesting a topic, respond with: yes
+    Output Format:
+    Respond only with a single word: yes or no (lowercase, no punctuation)
+    Examples:
+    “hi there” → no
+    “thanks!” → no
+    “can you summarize this article for me?” → yes
+    “what is LangGraph?” → yes
+    “hello, how’s it going?” → no
+    “hey, what’s the latest news on LLMs?” → yes"""
+
+    chat_template = ChatPromptTemplate.from_messages([
+        ("system",sys_msg),
+        ("user",f"Judge the below QUERY as instructed: \n{query}")
+    ])
+
+    llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(GeneralMessage)
+
+    prompt = chat_template.format_prompt(query=query)
+
+    result = llm.invoke(prompt)
+
+    return {"isQuestion":result.isQuestion}
+
+def initial_route(State:AgentState):
+    isQuestion = State["isQuestion"]
+    if isQuestion=="yes":
+        return "rephrase_query"
+    return "summarize"
 
 def rephrase_query(state:AgentState):
     """Checks if the query is related to previous chats."""
@@ -153,59 +198,3 @@ def summarize(state:AgentState):
     prompt = chat_template.format_prompt(query=query, messages=messages, documents=documents+[web_search_results])
     response = llm.invoke(prompt)
     return {"answer": response.content,"messages":[AIMessage(content=response.content)]}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# class GreetingMessages(BaseModel):
-#     is_greeting: str = Field(description="Wether user input is greeting or not.") 
-
-# class AgentState(TypedDict):
-#     """State of the agent."""
-#     query: str
-#     query_is_greeting:str
-#     web_search_results: list[Document]
-#     documents: list[Document]
-#     requires_web_search:bool
-#     messages: Annotated[Sequence[BaseMessage],operator.add]
-#     answer:str
-
-# def is_greeting(state:AgentState):
-    
-#     query = state["query"]
-
-#     sys_msg = "You are an assistant. Your task is to determine whether the given query is purely a greeting or opening message, such as 'hello', " \
-#     "'hi', 'how are you', 'thank you', etc. If the message is only a greeting, return 'yes'. If it includes any additional content, such as a " \
-#     "question or a specific request, return 'no'."
-
-#     chat_template = ChatPromptTemplate.from_messages([
-#         ("system",sys_msg),
-#         ("user",f"Here's the query:\n{query}")
-#     ])
-
-#     llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(GreetingMessages)
-
-#     prompt = chat_template.format_prompt(query=query)
-
-#     result = llm.invoke(prompt)
-
-#     return {"query_is_greeting":result.is_greeting}
-
