@@ -12,9 +12,6 @@ from dotenv import load_dotenv
 from rag import RAG
 from langchain_community.document_loaders import WebBaseLoader
 
-
-load_dotenv()
-
 rag = None
 
 def initalize_rag(urls, docs):

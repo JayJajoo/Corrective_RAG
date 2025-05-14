@@ -8,7 +8,6 @@ import os
 import shutil
 import streamlit as st
 
-load_dotenv()
 
 class RAG:
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):

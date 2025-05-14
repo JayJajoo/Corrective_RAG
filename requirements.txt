@@ -1,0 +1,36 @@
+# Core dependencies
+langgraph>=0.0.38
+langchain>=0.1.16
+langchain-openai>=0.1.3
+langchain-core>=0.1.34
+langchain-community>=0.0.27
+
+# Web search tool
+tavily-python>=0.3.0
+
+# Streamlit for UI
+streamlit>=1.32.0
+
+# PDF and DOCX processing
+python-docx>=0.8.11
+PyPDF2>=3.0.1
+docx2txt>=0.8
+
+# Environment variable support
+python-dotenv>=1.0.1
+
+# Vector database and embeddings
+chromadb>=0.4.24
+openai>=1.13.3
+
+# Prompt and schema
+pydantic>=2.6.4
+typing-extensions>=4.11.0
+
+# Optional utilities
+pandas>=2.2.2
+
+# For web data loading
+beautifulsoup4>=4.12.3
+html5lib>=1.1
+requests>=2.31.0
