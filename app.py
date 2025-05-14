@@ -11,19 +11,8 @@ import pandas as pd
 import docx2txt
 import PyPDF2
 import time
-import os
-import tomllib 
 
-with open("secrets.toml", "rb") as f:
-    config = tomllib.load(f)  
-
-os.environ["LANGSMITH_TRACING"] = str(config["langsmith"]["tracing"])
-os.environ["LANGSMITH_ENDPOINT"] = config["langsmith"]["endpoint"]
-os.environ["LANGSMITH_API_KEY"] = config["langsmith"]["api_key"]
-os.environ["LANGSMITH_PROJECT"] = config["langsmith"]["project"]
-os.environ["OPENAI_API_KEY"] = config["openai"]["api_key"]
-os.environ["TAVILY_API_KEY"] = config["tavily"]["api_key"]
-
+load_dotenv()
 
 def initialize_memory():
     memory = MemorySaver()
