@@ -10,6 +10,7 @@ from langchain.schema import Document
 import pandas as pd
 import docx2txt
 import PyPDF2
+import time
 
 load_dotenv()
 
@@ -17,8 +18,8 @@ def initialize_memory():
     memory = MemorySaver()
     return memory
 
-def initialize_agent(file_paths=None, docs=None, urls=None):
-    initalize_rag(urls=urls, file_paths=file_paths, docs=docs)
+def initialize_agent(docs=None, urls=None):
+    initalize_rag(urls=urls, docs=docs)
 
     workflow = StateGraph(AgentState)
     workflow.add_node("capture_intent",capture_intent)
@@ -52,16 +53,22 @@ def main():
         st.session_state.agent = None
     if "messages" not in st.session_state:
         st.session_state.messages = []
+    if "docs" not in st.session_state:
+        st.session_state.docs = []
+    if "urls" not in st.session_state:
+        st.session_state.urls = []
 
     with st.sidebar:
-        uploaded_files = st.file_uploader("Upload text files", type=["txt","docx","pdf","csv"], accept_multiple_files=True)
+        uploaded_files = st.file_uploader("Upload text files", type=["txt", "docx", "pdf", "csv"], accept_multiple_files=True)
         links = st.text_area(label="Paste your links here separated by ','")
-        docs = []
-        urls = []
-        file_paths = None
         button = st.button(label="Upload Content")
+
         if button:
+            start = time.time()
             with st.spinner(text="Loading..."):
+                docs = []
+                urls = []
+
                 if uploaded_files:
                     for uploaded_file in uploaded_files:
                         file_type = uploaded_file.name.split(".")[-1].lower()
@@ -76,16 +83,23 @@ def main():
                         elif file_type == "csv":
                             df = pd.read_csv(uploaded_file)
                             content = df.to_csv(index=False)
+
                         if content:
                             docs.append(Document(page_content=content, metadata={"source": uploaded_file.name}))
-                    st.session_state.disabled = False
+
                 if links:
-                    urls = [url.strip() for url in links.split(",")]
+                    urls = [url.strip() for url in links.split(",") if url.strip()]
+
+                if docs or urls:
+                    st.session_state.docs = docs
+                    st.session_state.urls = urls
+                    st.session_state.agent = initialize_agent(docs=docs, urls=urls)
                     st.session_state.disabled = False
-                if not st.session_state.disabled:
-                    st.session_state.agent = initialize_agent(docs=docs, urls=urls, file_paths=file_paths)
-                if(st.session_state.disabled==False):
-                    st.success("Vector Store Built Successfully!!")
+                    end = time.time()
+                    st.success(f"Vector Store Built Successfully in {end-start:.2f} seconds !")
+                else:
+                    st.warning("No valid content uploaded or entered.")
+
 
     chat_input = st.chat_input(
         placeholder="Please upload some documents to start.",
@@ -109,6 +123,7 @@ def main():
         role = "user" if isinstance(msg, HumanMessage) else "assistant"
         with st.chat_message(role):
             st.markdown(msg.content)
+
 
 if __name__ == "__main__":
     main()

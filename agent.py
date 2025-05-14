@@ -10,27 +10,30 @@ from langchain.schema import Document
 from langchain_core.messages import BaseMessage,AIMessage,ToolMessage
 from dotenv import load_dotenv
 from rag import RAG
+from langchain_community.document_loaders import WebBaseLoader
+
 
 load_dotenv()
 
 rag = None
 
+def initalize_rag(urls, docs):
+    global rag  
+    
+    if rag is None:
+        rag = RAG()
+    
+    data = []
 
-def initalize_rag(urls,file_paths,docs):
-    global rag
-    rag = RAG()
     if urls:
-        rag.load_urls(urls=urls)
+        data.extend(WebBaseLoader(urls).load())
     if docs:
-        rag.load_docs(docs=docs)
-    if file_paths:
-        rag.load_texts(file_paths=file_paths)
-    rag.generate_summary()
-    rag.vectorize_documents()
-    rag.initialize_retriever()
-
-class DocumentRelevancy(BaseModel):
-    relevant: list[str] = Field(description="List of response suggestiong wether document is relevant or not.") 
+        data.extend(docs)
+    
+    if len(data)>0:
+        rag.initialize_vector_store()
+        rag.sync_vectore_store(data)
+        rag.initialize_retriever()
 
 class DocumentRelevancy2(BaseModel):
     relevant: list[str] = Field(description="List of response suggestiong wether documents are relevant or not. Example ['yes','no','yes'...]") 
@@ -125,45 +128,7 @@ def retriver(state:AgentState):
     docs = rag.get_relevant_documents(query)
     return {"documents": docs}
 
-def quality_grader(state:AgentState):
-    """Grade the quality of the retrieved documents."""
-    if len(state["documents"]) > 0:
-    
-        documents = state["documents"]
-        query = state["query"]
-
-        sys_msg = """
-        Your task is to assess whether the provided document is paritally relevant to the given query.
-
-        Response Guidelines:
-        - If the document is paritally relevant to the query, respond with "yes".
-        - If the document is not even paritally relevant, respond with "no".
-
-        Additional Instructions:
-        Be aware that the text may contain isolated words or short phrases that lack surrounding context. These may still represent meaningful entities or concepts. Use your general knowledge and reasoning to interpret such cases and assess relevance, even when explicit relationships are not stated.
-        """
-
-
-        chat_template = ChatPromptTemplate.from_messages([
-            ("system", sys_msg),
-            ("user", "DOCUMENT: {document}\nQUERY: {query}"),
-        ])
-
-        llm = ChatOpenAI(model="gpt-4.1-nano",temperature=0.9).with_structured_output(DocumentRelevancy)
-        new_docs_list = []
-
-        for doc in documents:
-            prompt = chat_template.format_prompt(document=doc.page_content,query=query)
-            response = llm.invoke(prompt)
-            if str(response.relevant).endswith("yes"):
-                new_docs_list.append(doc)    
-        # print(f"Relevant Chunks/Total Chunks = {len(new_docs_list)}/{len(documents)}")
-        if len(new_docs_list) == 0 or len(new_docs_list)/len(documents) < 0.10:
-            return {"documents": new_docs_list,"requires_web_search":True}
-    
-    return {"documents": new_docs_list,"requires_web_search":False}
-
-def quality_grader2(state):
+def quality_grader2(state:AgentState):
     """Grade the quality of the retrieved documents."""
     if len(state["documents"]) > 0:
         documents = state["documents"]
@@ -192,7 +157,9 @@ def quality_grader2(state):
         llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(DocumentRelevancy2)
         prompt = chat_template.format_prompt(documents=str(documents),query=query)
         result = llm.invoke(prompt)
+        
         new_docs_list = []
+        
         for idx,relevance in enumerate(result.relevant):
             if relevance=="yes":
                 new_docs_list.append(documents[idx])
@@ -200,7 +167,7 @@ def quality_grader2(state):
         if len(new_docs_list) == 0 or len(new_docs_list)/len(documents) < 0.20:
             return {"documents": new_docs_list,"requires_web_search":True}
     
-    return {"documents": new_docs_list,"requires_web_search":False}
+    return {"documents": state["documents"],"requires_web_search":False}
 
 def router(state:AgentState):
     """Route the query to the appropriate function based on the state."""
@@ -228,6 +195,7 @@ def summarize(state:AgentState):
 
     sys_msg = """You are given a user question, the chat history, and a list of documents providing context. Your task is to generate a concise and relevant summary that directly addresses the user’s question.
     Instructions:
+    1. Do not generate random information or facts that except the things provided to you.
     1. Use both the chat history and the documents to inform your summary.
     2. Prioritize the content and insights from the documents over the chat history.
     3. Keep the tone conversational and user-friendly.
