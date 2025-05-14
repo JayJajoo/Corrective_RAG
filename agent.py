@@ -11,11 +11,11 @@ from langchain_core.messages import BaseMessage,AIMessage,ToolMessage
 from dotenv import load_dotenv
 from rag import RAG
 from langchain_community.document_loaders import WebBaseLoader
-import streamlit as st
+
+
+load_dotenv()
 
 rag = None
-
-OPENAI_API_KEY = st.secrets["openai"]["api_key"]
 
 def initalize_rag(urls, docs):
     global rag  
@@ -53,7 +53,6 @@ class AgentState(TypedDict):
 
 def capture_intent(state:AgentState):
     
-
     query = state["query"]
 
     sys_msg = """You are an intelligent assistant. Your job is to analyze a user’s message and decide whether it is:
@@ -77,7 +76,7 @@ def capture_intent(state:AgentState):
         ("user",f"Judge the below QUERY as instructed: \n{query}")
     ])
 
-    llm = ChatOpenAI(model="gpt-4.1-nano",api_key=OPENAI_API_KEY).with_structured_output(GeneralMessage)
+    llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(GeneralMessage)
 
     prompt = chat_template.format_prompt(query=query)
 
@@ -116,7 +115,7 @@ def rephrase_query(state:AgentState):
         ])
         query = state["query"]
         messages = [msg for msg in state["messages"] if isinstance(msg,ToolMessage)==False] 
-        llm = ChatOpenAI(model="gpt-4.1-nano",api_key=OPENAI_API_KEY)
+        llm = ChatOpenAI(model="gpt-4.1-nano")
         prompt = chat_template.format_prompt(query=query, context=messages)
         response = llm.invoke(prompt)
         return {"query":response.content}
@@ -155,7 +154,7 @@ def quality_grader2(state:AgentState):
             ("user", "DOCUMENTS: {documents}"),
         ])
 
-        llm = ChatOpenAI(model="gpt-4.1-nano",api_key=OPENAI_API_KEY).with_structured_output(DocumentRelevancy2)
+        llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(DocumentRelevancy2)
         prompt = chat_template.format_prompt(documents=str(documents),query=query)
         result = llm.invoke(prompt)
         
@@ -178,11 +177,10 @@ def router(state:AgentState):
 
 def web_search(state:AgentState):
     """Perform a web search using DuckDuckGo."""
-    TAVILY_API_KEY = st.secrets["tavily"]["api_key"]
     query = state["query"]
     search = TavilySearchResults(max_results = 1)
     # search = DuckDuckGoSearchResults(num_results=1)
-    results = search.invoke(query,api_key = TAVILY_API_KEY)
+    results = search.invoke(query)
     return {"web_search_results": results,"requires_web_search":False}
 
 def summarize(state:AgentState):
@@ -193,7 +191,7 @@ def summarize(state:AgentState):
     messages = [msg for msg in state["messages"] if isinstance(msg,ToolMessage)==False] 
 
 
-    llm= ChatOpenAI(model="gpt-4.1-nano",temperature=0.7,api_key=OPENAI_API_KEY)
+    llm= ChatOpenAI(model="gpt-4.1-nano",temperature=0.7)
 
     sys_msg = """You are given a user question, the chat history, and a list of documents providing context. Your task is to generate a concise and relevant summary that directly addresses the user’s question.
     Instructions:

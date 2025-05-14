@@ -2,14 +2,13 @@ from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
+from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 import os
 import shutil
 import streamlit as st
 
-
-OPENAI_API_KEY = st.secrets["openai"]["api_key"]
-
+load_dotenv()
 
 class RAG:
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
@@ -42,7 +41,7 @@ class RAG:
         return sources_to_add,sources_to_del
     
     def get_summary(self,doc):
-        llm = ChatOpenAI(model="gpt-4.1-nano", temperature=0.7,api_key=OPENAI_API_KEY)
+        llm = ChatOpenAI(model="gpt-4.1-nano", temperature=0.7)
         prompt = (
             f"Provide the summary in very detail for the text below given source and its content:\n"
             f"SOURCE: {doc.metadata['source']} - CONTENT:{doc.page_content}."
