@@ -166,7 +166,7 @@ def quality_grader2(state: AgentState):
         ("user", "DOCUMENT:\n{document}")
     ])
 
-    llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(str)
+    llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(DocumentRelevancy)
 
     for doc in documents:
         prompt = chat_template.format_prompt(document=doc, query=query)
