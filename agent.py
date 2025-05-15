@@ -140,7 +140,6 @@ def quality_grader2(state: AgentState):
 
     documents = state["documents"]
     query = state["query"]
-    relevance_results = []
     new_docs_list = []
 
     sys_msg = """
@@ -170,9 +169,8 @@ def quality_grader2(state: AgentState):
 
     for doc in documents:
         prompt = chat_template.format_prompt(document=doc, query=query)
-        result = llm.invoke(prompt).strip().lower()
-        relevance_results.append(result)
-        if result == "yes":
+        result = llm.invoke(prompt)
+        if result.relevant == "yes":
             new_docs_list.append(doc)
 
     # Apply 20% threshold condition
