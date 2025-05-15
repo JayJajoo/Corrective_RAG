@@ -141,21 +141,23 @@ def quality_grader2(state:AgentState):
         "{query}"
 
         ### Instructions:
+        - If query specifially tells you or intendeds to do a web search then its likely that documents passed to you might not be fit but still check them. 
         - Review each document **as if it were written in the context of the query**.
         - If the document contains information, phrases, or implications that could support, explain, or relate to the query, even indirectly, respond with "yes".
         - If the document contains completely unrelated information, respond with "no".
         - Consider implied meaning — for example, a rise in profit may relate to growth in the stock market.
+        - The length of the list to be returned as output should be exaclty same as number of documents provided below.
 
         ### Output format:
         Return a list of responses matching the documents’ order: ["yes", "no", "yes"]
         """
         chat_template = ChatPromptTemplate.from_messages([
             ("system", sys_msg),
-            ("user", "DOCUMENTS: {documents}"),
+            ("user", "NUMBER OF DOCUMENTS : {doc_len}\n\nDOCUMENTS : {documents}"),
         ])
 
         llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(DocumentRelevancy2)
-        prompt = chat_template.format_prompt(documents=str(documents),query=query)
+        prompt = chat_template.format_prompt(documents=str(documents),doc_len=len(documents),query=query)
         result = llm.invoke(prompt)
         
         new_docs_list = []
