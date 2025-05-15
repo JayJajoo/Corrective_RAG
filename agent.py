@@ -128,50 +128,59 @@ def retriver(state:AgentState):
     docs = rag.get_relevant_documents(query)
     return {"documents": docs}
 
-def quality_grader2(state:AgentState):
-    """Grade the quality of the retrieved documents."""
-    if len(state["documents"]) > 0:
-        documents = state["documents"]
-        query = state["query"]
-        
-        sys_msg = """
-        You are an assistant tasked with determining whether each document is at least **partially relevant** to the given query.
 
-        ### Query:
-        "{query}"
+class DocumentRelevancy(BaseModel):
+    relevant: str = Field(description="Wether document is relevant or not.") 
 
-        ### Instructions:
-        - If the query explicitly requests or implies a web search, the documents provided might not be directly relevant — still evaluate them carefully.
-        - If a document is very long, summarize it first before assessing relevance.
-        - Review each document **as if it were written in the context of the query**.
-        - If a document includes information, phrases, or implications that could support, explain, or relate to the query, even indirectly, respond with "yes".
-        - If a document contains entirely unrelated information, respond with "no".
-        - Consider implied connections — for example, an increase in profit could be relevant to a query about stock market growth.
-        - The number of items in your output list must exactly match the number of documents provided.
+def quality_grader2(state: AgentState):
+    """Grade the quality of each retrieved document individually for relevance."""
 
-        ### Output format:
-        Return a list of responses corresponding to the documents’ order: ["yes", "no", "yes"]
-        """
+    if len(state["documents"]) == 0:
+        return {"documents": [], "requires_web_search": True}
 
-        chat_template = ChatPromptTemplate.from_messages([
-            ("system", sys_msg),
-            ("user", "NUMBER OF DOCUMENTS : {doc_len}\n\nDOCUMENTS : {documents}"),
-        ])
+    documents = state["documents"]
+    query = state["query"]
+    relevance_results = []
+    new_docs_list = []
 
-        llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(DocumentRelevancy2)
-        prompt = chat_template.format_prompt(documents=str(documents),doc_len=len(documents),query=query)
-        result = llm.invoke(prompt)
-        
-        new_docs_list = []
-        
-        for idx,relevance in enumerate(result.relevant):
-            if relevance=="yes":
-                new_docs_list.append(documents[idx])
-        
-        if len(new_docs_list) == 0 or len(new_docs_list)/len(documents) < 0.20:
-            return {"documents": new_docs_list,"requires_web_search":True}
-    
-    return {"documents": state["documents"],"requires_web_search":False}
+    sys_msg = """
+    You are an assistant tasked with determining whether a document is at least **partially relevant** to the given query.
+
+    ### Query:
+    "{query}"
+
+    ### Instructions:
+    - If the query explicitly requests or implies a web search, the document provided might not be directly relevant — still evaluate it carefully.
+    - If the document is very long, summarize it first before assessing relevance.
+    - Review the document **as if it were written in the context of the query**.
+    - If the document includes information, phrases, or implications that could support, explain, or relate to the query, even indirectly, respond with "yes".
+    - If the document contains entirely unrelated information, respond with "no".
+    - Consider implied connections — for example, an increase in profit could be relevant to a query about stock market growth.
+
+    ### Output format:
+    Respond with a single string: "yes" or "no".
+    """
+
+    chat_template = ChatPromptTemplate.from_messages([
+        ("system", sys_msg),
+        ("user", "DOCUMENT:\n{document}")
+    ])
+
+    llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(str)
+
+    for doc in documents:
+        prompt = chat_template.format_prompt(document=doc, query=query)
+        result = llm.invoke(prompt).strip().lower()
+        relevance_results.append(result)
+        if result == "yes":
+            new_docs_list.append(doc)
+
+    # Apply 20% threshold condition
+    if len(new_docs_list) == 0 or len(new_docs_list) / len(documents) < 0.30:
+        return {"documents": new_docs_list, "requires_web_search": True}
+
+    return {"documents": new_docs_list, "requires_web_search": False}
+
 
 def router(state:AgentState):
     """Route the query to the appropriate function based on the state."""
@@ -213,4 +222,50 @@ def summarize(state:AgentState):
     prompt = chat_template.format_prompt(query=query, messages=messages, documents=documents+[web_search_results])
     response = llm.invoke(prompt)
     return {"answer": response.content,"messages":[AIMessage(content=response.content)]}
+
+
+# def quality_grader2(state:AgentState):
+#     """Grade the quality of the retrieved documents."""
+#     if len(state["documents"]) > 0:
+#         documents = state["documents"]
+#         query = state["query"]
+        
+#         sys_msg = """
+#         You are an assistant tasked with determining whether each document is at least **partially relevant** to the given query.
+
+#         ### Query:
+#         "{query}"
+
+#         ### Instructions:
+#         - If the query explicitly requests or implies a web search, the documents provided might not be directly relevant — still evaluate them carefully.
+#         - If a document is very long, summarize it first before assessing relevance.
+#         - Review each document **as if it were written in the context of the query**.
+#         - If a document includes information, phrases, or implications that could support, explain, or relate to the query, even indirectly, respond with "yes".
+#         - If a document contains entirely unrelated information, respond with "no".
+#         - Consider implied connections — for example, an increase in profit could be relevant to a query about stock market growth.
+#         - The number of items in your output list must exactly match the number of documents provided.
+
+#         ### Output format:
+#         Return a list of responses corresponding to the documents’ order: ["yes", "no", "yes"]
+#         """
+
+#         chat_template = ChatPromptTemplate.from_messages([
+#             ("system", sys_msg),
+#             ("user", "NUMBER OF DOCUMENTS : {doc_len}\n\nDOCUMENTS : {documents}"),
+#         ])
+
+#         llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(DocumentRelevancy2)
+#         prompt = chat_template.format_prompt(documents=str(documents),doc_len=len(documents),query=query)
+#         result = llm.invoke(prompt)
+        
+#         new_docs_list = []
+        
+#         for idx,relevance in enumerate(result.relevant):
+#             if relevance=="yes":
+#                 new_docs_list.append(documents[idx])
+        
+#         if len(new_docs_list) == 0 or len(new_docs_list)/len(documents) < 0.20:
+#             return {"documents": new_docs_list,"requires_web_search":True}
+    
+#     return {"documents": state["documents"],"requires_web_search":False}
 
