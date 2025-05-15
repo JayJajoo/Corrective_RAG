@@ -141,16 +141,18 @@ def quality_grader2(state:AgentState):
         "{query}"
 
         ### Instructions:
-        - If query specifially tells you or intendeds to do a web search then its likely that documents passed to you might not be fit but still check them. 
+        - If the query explicitly requests or implies a web search, the documents provided might not be directly relevant — still evaluate them carefully.
+        - If a document is very long, summarize it first before assessing relevance.
         - Review each document **as if it were written in the context of the query**.
-        - If the document contains information, phrases, or implications that could support, explain, or relate to the query, even indirectly, respond with "yes".
-        - If the document contains completely unrelated information, respond with "no".
-        - Consider implied meaning — for example, a rise in profit may relate to growth in the stock market.
-        - The length of the list to be returned as output should be exaclty same as number of documents provided below.
+        - If a document includes information, phrases, or implications that could support, explain, or relate to the query, even indirectly, respond with "yes".
+        - If a document contains entirely unrelated information, respond with "no".
+        - Consider implied connections — for example, an increase in profit could be relevant to a query about stock market growth.
+        - The number of items in your output list must exactly match the number of documents provided.
 
         ### Output format:
-        Return a list of responses matching the documents’ order: ["yes", "no", "yes"]
+        Return a list of responses corresponding to the documents’ order: ["yes", "no", "yes"]
         """
+
         chat_template = ChatPromptTemplate.from_messages([
             ("system", sys_msg),
             ("user", "NUMBER OF DOCUMENTS : {doc_len}\n\nDOCUMENTS : {documents}"),
