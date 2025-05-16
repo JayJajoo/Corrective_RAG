@@ -205,7 +205,7 @@ def router(state:AgentState):
 def web_search(state:AgentState):
     """Perform a web search using DuckDuckGo."""
     query = state["query"]
-    search = TavilySearchResults(max_results = 1)
+    search = TavilySearchResults(max_results = 6)
     # search = DuckDuckGoSearchResults(num_results=1)
     results = search.invoke(query)
     return {"web_search_results": results,"requires_web_search":False}

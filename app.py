@@ -104,12 +104,17 @@ def main():
                     st.warning("No valid content uploaded or entered.")
 
 
+    
     chat_input = st.chat_input(
         placeholder="Please upload some documents to start.",
         disabled=st.session_state.disabled
     )
 
+    on=None
+
     if chat_input and st.session_state.agent is not None:
+        if on:
+            chat_input = f"Web search for - {chat_input}"
         state = {
             "query": str(chat_input),
             "rephrased_query": None,
@@ -121,11 +126,15 @@ def main():
         }
         result = st.session_state.agent.invoke(state, config=st.session_state.config)
         st.session_state.messages = result["messages"]
-
-    for msg in st.session_state.messages:
-        role = "user" if isinstance(msg, HumanMessage) else "assistant"
-        with st.chat_message(role):
-            st.markdown(msg.content)
+    with st.container(height=430):
+        for msg in st.session_state.messages:
+            role = "user" if isinstance(msg, HumanMessage) else "assistant"
+            with st.chat_message(role):
+                st.markdown(msg.content)
+    
+    with st.container(border=True):
+        on = st.toggle("Web Search")
+    
 
 
 if __name__ == "__main__":
