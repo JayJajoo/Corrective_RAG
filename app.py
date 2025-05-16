@@ -46,6 +46,7 @@ def initialize_agent(docs=None, urls=None):
     return agent
 
 def main():
+    # Initialize session state variables once
     if "disabled" not in st.session_state:
         st.session_state.disabled = True
     if "config" not in st.session_state:
@@ -60,6 +61,8 @@ def main():
         st.session_state.docs = []
     if "urls" not in st.session_state:
         st.session_state.urls = []
+    if "web_search_enabled" not in st.session_state:
+        st.session_state.web_search_enabled = False
 
     with st.sidebar:
         uploaded_files = st.file_uploader("Upload text files", type=["txt", "docx", "pdf", "csv"], accept_multiple_files=True)
@@ -99,42 +102,41 @@ def main():
                     st.session_state.agent = initialize_agent(docs=docs, urls=urls)
                     st.session_state.disabled = False
                     end = time.time()
-                    st.success(f"Vector Store Built Successfully in {end-start:.2f} seconds !")
+                    st.success(f"Vector Store Built Successfully in {end-start:.2f} seconds!")
                 else:
                     st.warning("No valid content uploaded or entered.")
 
+    # Read toggle state BEFORE processing chat input
+    st.session_state.web_search_enabled = st.toggle("Web Search", value=st.session_state.web_search_enabled)
 
-    
     chat_input = st.chat_input(
         placeholder="Please upload some documents to start.",
         disabled=st.session_state.disabled
     )
 
-    on=None
-
     if chat_input and st.session_state.agent is not None:
-        if on:
-            chat_input = f"Web search for - {chat_input}"
+        query = str(chat_input)
+        if st.session_state.web_search_enabled:
+            query = f"Web search for - {query}"
+
         state = {
-            "query": str(chat_input),
+            "query": query,
             "rephrased_query": None,
             "web_search_results": [],
             "documents": [],
             "requires_web_search": None,
-            "messages": [HumanMessage(content=chat_input)],
+            "messages": [HumanMessage(content=query)],
             "answer": None,
         }
         result = st.session_state.agent.invoke(state, config=st.session_state.config)
         st.session_state.messages = result["messages"]
+
     with st.container(height=430):
         for msg in st.session_state.messages:
             role = "user" if isinstance(msg, HumanMessage) else "assistant"
             with st.chat_message(role):
                 st.markdown(msg.content)
-    
-    with st.container(border=True):
-        on = st.toggle("Web Search")
-    
+
 
 
 if __name__ == "__main__":
