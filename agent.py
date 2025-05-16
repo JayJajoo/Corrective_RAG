@@ -17,6 +17,25 @@ load_dotenv()
 
 rag = None
 
+class DocumentRelevancy(BaseModel):
+    relevant: str = Field(description="Wether document is relevant or not.") 
+
+class WebSearchReuired(BaseModel):
+    isAskingForWebSearch: str = Field(description="Wether user is asking for web search or not.") 
+
+class GeneralMessage(BaseModel):
+    isQuestion: str = Field(description="Wether user input is really a query or not") 
+
+class AgentState(TypedDict):
+    """State of the agent."""
+    query: str
+    isQuestion:str
+    web_search_results: list[Document]
+    documents: list[Document]
+    requires_web_search:bool
+    messages: Annotated[Sequence[BaseMessage],operator.add]
+    answer:str
+
 def initalize_rag(urls, docs):
     global rag  
     
@@ -34,22 +53,6 @@ def initalize_rag(urls, docs):
         rag.initialize_vector_store()
         rag.sync_vectore_store(data)
         rag.initialize_retriever()
-
-class DocumentRelevancy2(BaseModel):
-    relevant: list[str] = Field(description="List of response suggestiong wether documents are relevant or not. Example ['yes','no','yes'...]") 
-
-class GeneralMessage(BaseModel):
-    isQuestion: str = Field(description="Wether user input is really a query or not") 
-
-class AgentState(TypedDict):
-    """State of the agent."""
-    query: str
-    isQuestion:str
-    web_search_results: list[Document]
-    documents: list[Document]
-    requires_web_search:bool
-    messages: Annotated[Sequence[BaseMessage],operator.add]
-    answer:str
 
 def capture_intent(state:AgentState):
     
@@ -73,12 +76,12 @@ def capture_intent(state:AgentState):
 
     chat_template = ChatPromptTemplate.from_messages([
         ("system",sys_msg),
-        ("user",f"Judge the below QUERY as instructed: \n{query}")
+        ("user","Judge the below QUERY as instructed: \n{query}")
     ])
 
     llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(GeneralMessage)
 
-    prompt = chat_template.format_prompt(query=query)
+    prompt = chat_template.format_prompt(query=str(query))
 
     result = llm.invoke(prompt)
 
@@ -87,34 +90,52 @@ def capture_intent(state:AgentState):
 def initial_route(State:AgentState):
     isQuestion = State["isQuestion"]
     if isQuestion=="yes":
-        return "rephrase_query"
+        return "is_asking_for_web_search"
     return "summarize"
 
 def rephrase_query(state:AgentState):
     """Checks if the query is related to previous chats."""
     if (len(state["messages"])>1):
         sys_msg = """
-        Given the chat history and a new user question, determine whether the question depends on the previous conversation.
-        If it does, rephrase it into a complete, natural, and contextually grounded user question that could be clearly understood by a language model without needing prior context.
-        If the question is already self-contained and unambiguous, return it unchanged.
+        You are a helpful assistant. Given the chat history and a new user question, determine whether the question relies on prior context. 
+        If it does, rephrase it into a complete, natural, and contextually grounded question that is understandable on its own. 
+        If the question is already clear and self-contained, return it unchanged.
 
-        Important guidelines:
-        - Your output must always be a full user-style question — not a meta-comment or assistant-side interpretation.
-        - Do NOT invent or assume facts beyond what’s explicitly present in the conversation.
-        - Only introduce prior context when it’s needed to make the question understandable in isolation.
-        - Be concise but complete — include only the necessary references.
+        EXAMPLE 1 :
+        CONTEXT:
+        User: Who is Narendra Modi?
+        NEW USER QUESTION: What is his age?
+        Rephrased question: What is the age of Narendra Modi?
 
-        Return ONLY the rewritten or original user question — no extra commentary or formatting.
+        EXAMPLE 2 :
+        CONTEXT:
+        User: What is travelling salesman problem?
+        NEW USER QUESTION: give me code for that?
+        Rephrased question: What is the code for travelling salesman problem?
+
+        EXAMPLE 2 :
+        CONTEXT:
+        User: where is california?
+        NEW USER QUESTION: how's its weather?
+        Rephrased question: how's the weather in california?
+        
+        Guidelines:
+        - Always return a complete user-style question — never commentary or explanations.
+        - Do NOT invent or assume any facts that aren't explicitly mentioned in the conversation.
+        - Only include prior context if it's necessary to make the question understandable in isolation.
+        - Keep it concise but complete — include only what's needed.
+
+        Output ONLY the rephrased or original question — no formatting, no commentary.
+
         CONTEXT: {context}
         """
-
 
         chat_template = ChatPromptTemplate.from_messages([
             ("system", sys_msg),
             ("user", "Please rephrase the following query if required: {query}"),
         ])
         query = state["query"]
-        messages = [msg for msg in state["messages"] if isinstance(msg,ToolMessage)==False] 
+        messages = [str(msg.content) for msg in state["messages"] if isinstance(msg,ToolMessage)==False] 
         llm = ChatOpenAI(model="gpt-4.1-nano")
         prompt = chat_template.format_prompt(query=query, context=messages)
         response = llm.invoke(prompt)
@@ -127,10 +148,6 @@ def retriver(state:AgentState):
     query = state["query"]
     docs = rag.get_relevant_documents(query)
     return {"documents": docs}
-
-
-class DocumentRelevancy(BaseModel):
-    relevant: str = Field(description="Wether document is relevant or not.") 
 
 def quality_grader2(state: AgentState):
     """Grade the quality of each retrieved document individually for relevance."""
@@ -179,7 +196,6 @@ def quality_grader2(state: AgentState):
 
     return {"documents": new_docs_list, "requires_web_search": False}
 
-
 def router(state:AgentState):
     """Route the query to the appropriate function based on the state."""
     if state["requires_web_search"] == True:
@@ -194,33 +210,66 @@ def web_search(state:AgentState):
     results = search.invoke(query)
     return {"web_search_results": results,"requires_web_search":False}
 
-def summarize(state:AgentState):
+def summarize(state: AgentState):
     query = state["query"]
     documents = state["documents"]
     web_search_results = state["web_search_results"]
     messages = state["messages"][-10:]
-    messages = [msg for msg in state["messages"] if isinstance(msg,ToolMessage)==False] 
+    messages = [msg for msg in state["messages"] if not isinstance(msg, ToolMessage)] 
 
+    llm = ChatOpenAI(model="gpt-4.1-nano", temperature=0.7)
 
-    llm= ChatOpenAI(model="gpt-4.1-nano",temperature=0.7)
+    sys_msg = """You are given a user question, the chat history, and a list of documents providing context. 
+    Additionally, you may receive web search results as part of the documents.
+    Your task is to generate a concise and relevant summary that directly addresses the user’s question.
 
-    sys_msg = """You are given a user question, the chat history, and a list of documents providing context. Your task is to generate a concise and relevant summary that directly addresses the user’s question.
     Instructions:
-    1. Do not generate random information or facts that except the things provided to you.
-    1. Use both the chat history and the documents to inform your summary.
-    2. Prioritize the content and insights from the documents over the chat history.
-    3. Keep the tone conversational and user-friendly.
-    4. Ensure the summary is focused, informative, and directly aligned with the user's question."""
+    1. Do NOT say that you cannot perform a web search. Assume web search results are provided as part of the input.
+    2. Use both the chat history, documents, and web search results to inform your summary.
+    3. Prioritize the content and insights from documents and web search results over the chat history.
+    4. Keep your tone conversational, friendly, and natural.
+    5. Ensure the summary is focused, informative, and directly aligned with the user's question.
+    6. Do NOT generate any information beyond what is provided to you.
+    """
 
     chat_template = ChatPromptTemplate.from_messages([
         ("system", sys_msg),
-        ("user", "CHAT HISTORY: {messages}\nDOCUMENTS: {documents}\nAnswer this QUERY: {query} uing the CHAT HISTORY and DOCUMENTS and foloow the innstructions provided."),
+        ("user", "CHAT HISTORY: {messages}\nDOCUMENTS AND WEB SEARCH RESULTS: {documents}\nAnswer this QUERY: {query} using the CHAT HISTORY and DOCUMENTS and follow the instructions provided."),
     ])
-    
-    prompt = chat_template.format_prompt(query=query, messages=messages, documents=documents+[web_search_results])
-    response = llm.invoke(prompt)
-    return {"answer": response.content,"messages":[AIMessage(content=response.content)]}
 
+    # Combine documents with web_search_results (assuming web_search_results is a list or compatible)
+    combined_docs = documents + (web_search_results if isinstance(web_search_results, list) else [web_search_results])
+
+    prompt = chat_template.format_prompt(query=query, messages=messages, documents=combined_docs)
+    response = llm.invoke(prompt)
+    return {"answer": response.content, "messages": [AIMessage(content=response.content)]}
+
+def is_asking_for_web_search(state:AgentState):
+    query = state["query"]
+    llm = ChatOpenAI(model="gpt-4.1-nano").with_structured_output(WebSearchReuired)
+    sys_msg = (
+        "You are a helpful assistant. Your task is to determine if the user is explicitly or implicitly requesting a web search. "
+        "Respond with 'yes' if the user's query includes phrases like 'search the internet', 'search online', 'web search', "
+        "'look up online resources', or any similar expressions that indicate searching the web. "
+        "Respond with 'no' if the query refers to local document search, such as 'search documents', 'look up in docs', or 'look up in documents'."
+    )
+    template = ChatPromptTemplate.from_messages([
+        ("system",sys_msg),
+        ("user","Decide whether user is asking for web search or not for below QUERY:\n\n{query}")
+    ])
+    prompt = template.format_prompt(query=str(query))
+    result = llm.invoke(prompt)
+    if result.isAskingForWebSearch == "yes":
+        return {"requires_web_search":True}
+    return {"requires_web_search":False}
+
+def rag_or_web_router(state:AgentState):
+    if state["requires_web_search"]==True:
+        return "web_search"
+    return "call_rag"
+
+# class DocumentRelevancy2(BaseModel):
+#     relevant: list[str] = Field(description="List of response suggestiong wether documents are relevant or not. Example ['yes','no','yes'...]") 
 
 # def quality_grader2(state:AgentState):
 #     """Grade the quality of the retrieved documents."""

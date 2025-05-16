@@ -3,7 +3,7 @@ from langgraph.graph import StateGraph, END, START
 from langgraph.checkpoint.memory import MemorySaver
 from dotenv import load_dotenv
 from rag import RAG
-from agent import AgentState, rephrase_query, retriver, quality_grader2, router, web_search, summarize, initalize_rag, capture_intent,initial_route
+from agent import AgentState, rephrase_query, retriver, quality_grader2, router, web_search, summarize, initalize_rag, capture_intent,initial_route,rag_or_web_router,is_asking_for_web_search
 from langchain_core.messages import HumanMessage, AIMessage
 import streamlit as st
 from langchain.schema import Document
@@ -30,10 +30,13 @@ def initialize_agent(docs=None, urls=None):
     workflow.add_node("router", router)
     workflow.add_node("web_search", web_search)
     workflow.add_node("summarize", summarize)
+    workflow.add_node("rag_or_web_router", rag_or_web_router)
+    workflow.add_node("is_asking_for_web_search", is_asking_for_web_search)
 
     workflow.add_edge(START,"capture_intent")
-    workflow.add_conditional_edges("capture_intent", initial_route, {"rephrase_query": "rephrase_query", "summarize": "summarize"})
-    workflow.add_edge("rephrase_query", "retriver")
+    workflow.add_conditional_edges("capture_intent", initial_route, {"is_asking_for_web_search": "is_asking_for_web_search", "summarize": "summarize"})
+    workflow.add_edge("is_asking_for_web_search","rephrase_query")
+    workflow.add_conditional_edges("rephrase_query", rag_or_web_router, {"web_search": "web_search", "call_rag": "retriver"})
     workflow.add_edge("retriver", "quality_grader")
     workflow.add_conditional_edges("quality_grader", router, {"web_search": "web_search", "summarize": "summarize"})
     workflow.add_edge("web_search", "summarize")
